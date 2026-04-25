@@ -22,8 +22,8 @@ install:
 	cp $(VOICE) /usr/local/lib/mts
 
 install_ultra:
-        mv umts /usr/local/bin/mts
-        mkdir -p /usr/local/lib/mts
-        cp $(VOICE) /usr/local/lib/mts
+	mv umts /usr/local/bin/mts
+	mkdir -p /usr/local/lib/mts
+	cp $(VOICE) /usr/local/lib/mts
 
 

@@ -81,6 +81,13 @@ void* readOscs (void* dump) {
     }
 
 // get data from my wiringpi -- side now selects module not chip
+   #ifdef DEBUG
+      fprintf(stderr, "Channel %d: rate=%d, FASTCLK/rate=%d\n", side, rate, FASTCLK/rate);
+   #endif
+   if (rate <= 0) {
+      fprintf(stderr, "Channel %d: bad rate %d, using fallback\n", side, rate);
+      rate = 350; // safe fallback
+   }
    chnl = wiringPiSPISetup(side, FASTCLK/rate);
    res = wiringPiSPIDataRW(side, bufr, SPI_BUF);
    close(chnl);
@@ -184,6 +191,8 @@ void setupSensing () {
 
   pitch_if = 570000; // guesses around which to search
   vol_if = 520000;
+  rateP = FASTCLK / pitch_if;   // ← ADD THIS
+  rateV = FASTCLK / vol_if;     // ← ADD THIS
   pthread_create(&threadId, NULL, readOscs, (void*)0);
   pthread_create(&threadId, NULL, readOscs, (void*)1);
 
