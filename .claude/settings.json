@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd /home/taylor/projects/theremerin/theremin && if git log origin/master..HEAD --oneline | grep -q .; then ./deploy.sh 2>&1; fi",
+            "timeout": 120,
+            "statusMessage": "Deploying to Pi..."
+          }
+        ]
+      }
+    ]
+  }
+}
