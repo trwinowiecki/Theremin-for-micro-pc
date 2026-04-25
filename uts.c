@@ -172,15 +172,23 @@ void calibrate(int guess0, int guess1) {  // try to find osc freq
   }
   for (s=0;s<2;++s) {
     if (low[s] == 0 || high[s] == 0) {
-      fprintf(stderr, "Osc %d CALIBRATION FAILED: no valid beat reading in range %d-%d Hz\n",
-              s, IF_MIN, IF_MAX);
-      fprintf(stderr, "  last trans_count=%d, last freq=%.0lf Hz\n",
-              trans_count[s], freq[s]);
-      fprintf(stderr, "  trans=0 → no oscillator signal on SPI MISO\n");
-      fprintf(stderr, "  trans high, freq>>%d → oscillator freq far from guess (%d Hz)\n",
-              IF_MAX, s ? guess1 : guess0);
-      if (s == 0) rateP = FASTCLK / (guess0 + IF_MIN);
-      else        rateV = FASTCLK / (guess1 + IF_MIN);
+      fprintf(stderr, "Osc %d CALIBRATION FAILED — running wide sweep to find actual frequency...\n", s);
+      // Sweep SPI clock from 300 kHz to 1 MHz to find where the oscillator actually is
+      int sweep_rate, best_rate = 0; double best_beat = 1e9;
+      for (sweep_rate = FASTCLK/1000000; sweep_rate <= FASTCLK/300000; sweep_rate++) {
+        if (s == 0) rateP = sweep_rate; else rateV = sweep_rate;
+        pitch_if = vol_if = 50000;
+        tv.tv_nsec = 0.1e9;
+        nanosleep(&tv, NULL);
+        double measured = s ? vol_if : pitch_if;
+        int clk = FASTCLK / sweep_rate;
+        fprintf(stderr, "  Osc %d: SPI clk %d Hz  beat %.0lf Hz  trans %d\n",
+                s, clk, measured, trans_count[s]);
+        if (measured < best_beat) { best_beat = measured; best_rate = sweep_rate; }
+      }
+      fprintf(stderr, "Osc %d: lowest beat %.0lf Hz at SPI clk %d Hz — oscillator ~%d Hz\n",
+              s, best_beat, FASTCLK/best_rate, FASTCLK/best_rate);
+      if (s == 0) rateP = best_rate; else rateV = best_rate;
       continue;
     }
     i = (top[s]*low[s] + base[s]*high[s])/(low[s]+high[s]) + IF_MIN;
