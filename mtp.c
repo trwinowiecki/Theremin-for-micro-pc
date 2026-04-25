@@ -52,6 +52,126 @@
 void setupSensing();
 void getTSs(int*, int*);
 void getIFs(int*, int*);
+
+// ---- MIDI output via ALSA sequencer ----
+static snd_seq_t *midi_seq = NULL;
+static int midi_port = -1;
+static int midi_playing = 0;
+static int midi_last_note = -1;
+
+#define MIDI_BEND_RANGE 48  // semitones (±4 octaves pitch bend range)
+
+static void midi_send_ev(snd_seq_event_t *ev) {
+  snd_seq_ev_set_source(ev, midi_port);
+  snd_seq_ev_set_subs(ev);
+  snd_seq_ev_set_direct(ev);
+  snd_seq_event_output_direct(midi_seq, ev);
+}
+
+static void midi_cc(int cc, int val) {
+  snd_seq_event_t ev;
+  snd_seq_ev_clear(&ev);
+  snd_seq_ev_set_controller(&ev, 0, cc, val);
+  midi_send_ev(&ev);
+}
+
+static void midi_set_bend_range(void) {
+  midi_cc(101, 0);              // RPN MSB
+  midi_cc(100, 0);              // RPN LSB (RPN 0 = pitch bend range)
+  midi_cc(6, MIDI_BEND_RANGE);  // data entry: semitones
+  midi_cc(38, 0);               // data entry LSB: cents
+  midi_cc(101, 127);            // reset RPN to null
+  midi_cc(100, 127);
+}
+
+static void midi_init(void) {
+  if (snd_seq_open(&midi_seq, "default", SND_SEQ_OPEN_OUTPUT, 0) < 0) {
+    fprintf(stderr, "MIDI: sequencer open failed\n");
+    midi_seq = NULL;
+    return;
+  }
+  snd_seq_set_client_name(midi_seq, "Theremin");
+  midi_port = snd_seq_create_simple_port(midi_seq, "MIDI Out",
+    SND_SEQ_PORT_CAP_READ | SND_SEQ_PORT_CAP_SUBS_READ,
+    SND_SEQ_PORT_TYPE_APPLICATION);
+  if (midi_port < 0) {
+    fprintf(stderr, "MIDI: port creation failed\n");
+    snd_seq_close(midi_seq);
+    midi_seq = NULL;
+    return;
+  }
+  midi_set_bend_range();
+  fprintf(stderr, "MIDI: ready as 'Theremin:MIDI Out'\n");
+}
+
+static void midi_update(double tgtPitch, double tgtVol, int autotune_mode) {
+  snd_seq_event_t ev;
+  int cc_val;
+
+  if (!midi_seq) return;
+
+  cc_val = (int)(tgtVol * 127);
+  if (cc_val < 0) cc_val = 0;
+  if (cc_val > 127) cc_val = 127;
+  midi_cc(11, cc_val);  // CC11 expression
+
+  if (tgtVol < 0.02 || tgtPitch < 20.0) {
+    if (midi_playing) {
+      snd_seq_ev_clear(&ev);
+      snd_seq_ev_set_noteoff(&ev, 0, midi_last_note, 0);
+      midi_send_ev(&ev);
+      midi_playing = 0;
+    }
+    return;
+  }
+
+  if (autotune_mode == CONTINUOUS) {
+    double semitones = 12.0 * log2(tgtPitch / 440.0);
+    int bend = (int)(semitones * 8192.0 / MIDI_BEND_RANGE);
+    if (bend > 8191)  bend = 8191;
+    if (bend < -8192) bend = -8192;
+
+    if (!midi_playing || midi_last_note != 69) {
+      if (midi_playing) {
+        snd_seq_ev_clear(&ev);
+        snd_seq_ev_set_noteoff(&ev, 0, midi_last_note, 0);
+        midi_send_ev(&ev);
+      }
+      midi_set_bend_range();
+      snd_seq_ev_clear(&ev);
+      snd_seq_ev_set_noteon(&ev, 0, 69, 100);  // A4 anchor note
+      midi_send_ev(&ev);
+      midi_last_note = 69;
+      midi_playing = 1;
+    }
+
+    snd_seq_ev_clear(&ev);
+    snd_seq_ev_set_pitchbend(&ev, 0, bend);
+    midi_send_ev(&ev);
+
+  } else {
+    int note = (int)round(69.0 + 12.0 * log2(tgtPitch / 440.0));
+    if (note < 0)   note = 0;
+    if (note > 127) note = 127;
+
+    if (!midi_playing || note != midi_last_note) {
+      if (midi_playing) {
+        snd_seq_ev_clear(&ev);
+        snd_seq_ev_set_noteoff(&ev, 0, midi_last_note, 0);
+        midi_send_ev(&ev);
+      }
+      snd_seq_ev_clear(&ev);
+      snd_seq_ev_set_pitchbend(&ev, 0, 0);  // clear bend for quantized notes
+      midi_send_ev(&ev);
+      snd_seq_ev_clear(&ev);
+      snd_seq_ev_set_noteon(&ev, 0, note, 100);
+      midi_send_ev(&ev);
+      midi_last_note = note;
+      midi_playing = 1;
+    }
+  }
+}
+// ---- end MIDI ----
 /* include to use sensed values from stdin/stdout 
 void setupSensing() {};
 void getIFs(int* p, int* v) {
@@ -97,6 +217,7 @@ int main(int argc, char* argv[]) {
   snd_pcm_t *handle;
 
   setupSensing();
+  midi_init();
   tv.tv_sec = 0;
   tv.tv_nsec = 1e8;
   nanosleep(&tv, NULL); // let IF detection settle
@@ -293,7 +414,10 @@ int main(int argc, char* argv[]) {
       break;
     }
     tgtPitch = tuning*tgtPitch/4096;
-    
+
+    if (state == PLAY)
+      midi_update(tgtPitch, tgtVol, autotune);
+
     if (speech) {
       i = fread(buffer, 2, sendSiz, speech);
       if (i<sendSiz) {
