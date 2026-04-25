@@ -24,6 +24,7 @@
 
 
 #include <stdint.h>
+#include <stdio.h>
 #include <fcntl.h>
 #include <errno.h>
 #include <string.h>
@@ -119,6 +120,9 @@ int wiringPiSPISetupMode (int channel, int speed, int mode)
   if (ioctl (fd, SPI_IOC_WR_BITS_PER_WORD, &spiBPW) < 0)
     return wiringPiFailure (WPI_ALMOST, "SPI BPW Change failure: %s\n", strerror (errno)) ;
 
+  #ifdef DEBUG
+    fprintf(stderr, "Setting SPI channel %d speed to %d Hz\n", channel, speed);
+  #endif
   if (ioctl (fd, SPI_IOC_WR_MAX_SPEED_HZ, &speed)   < 0)
     return wiringPiFailure (WPI_ALMOST, "SPI Speed Change failure: %s\n", strerror (errno)) ;
 
