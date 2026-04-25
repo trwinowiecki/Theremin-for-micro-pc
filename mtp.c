@@ -224,7 +224,7 @@ int main(int argc, char* argv[]) {
   getIFs(&baseLineP, &baseLineV);
   fprintf(stderr, "IFs: pitch %d, vol %d\n", baseLineP, baseLineV);
   
-  if ((err = snd_pcm_open(&handle, "plughw:1,0", SND_PCM_STREAM_PLAYBACK, 0)) < 0)
+  if ((err = snd_pcm_open(&handle, "plughw:0,0", SND_PCM_STREAM_PLAYBACK, 0)) < 0)
     {
     fprintf(stderr, "Playback open error: %s\n", snd_strerror(err));
     exit(EXIT_FAILURE);
