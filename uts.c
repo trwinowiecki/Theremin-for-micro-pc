@@ -21,7 +21,6 @@
 volatile int rateP, rateV;
 volatile double pitch_if = 3000, vol_if = 3000;
 volatile struct timespec pitch_ts, vol_ts;
-volatile int trans_count[2] = {0, 0};  // transitions per buffer, for diagnostics
 
 // avoid need to link all of wiringPi
 int wiringPiFailure(int msg, char* full, char* rest) {
@@ -100,12 +99,10 @@ void* readOscs (void* dump) {
     }
     toChk = 0;
     int last[2] = {0, 0};
-    int transitions = 0;
     current = bufr[0] >> 7; // first bit in buffer
 
     while (toChk = find_transition(side, bufr, toChk+1, current)) {
       current = !current;
-      transitions++;
       if (side) {
 	cycles = 0.5+26.5*(toChk/24)-1.25*(!toChk%24); 
 //		adjust for 2.5-bit gaps 
@@ -120,7 +117,6 @@ void* readOscs (void* dump) {
 
       toChk += FASTCLK*0.05/(*freq)/rate; // jump over jitter
     }
-    trans_count[side] = transitions;
     // TODO if no last, reduce freq to show it out of range!
 
   }
@@ -143,8 +139,8 @@ void calibrate(int guess0, int guess1) {  // try to find osc freq
   tv.tv_sec = 0;
   tv.tv_nsec = 0.2e9;
 
-  printf("P clock beat  trans   loAlias hiAlias V clock beat  trans   loAlias hiAlias\n");
-  for (i=-UNCERTAINTY; i<=UNCERTAINTY;i += IF_MAX-IF_MIN) {
+  printf("P clock beat    loAlias hiAlias V clock beat    loAlias hiAlias\n");
+  for (i=-UNCERTAINTY; i<=UNCERTAINTY;i += IF_MAX-IF_MIN) { 
     // range over which to search --
     // increment equal to useful range so one reading will be within
     rateP = FASTCLK/(guess0+i);
@@ -156,7 +152,7 @@ void calibrate(int guess0, int guess1) {  // try to find osc freq
     freq[1] = vol_if;
     for (s=0;s<2;++s) { // calibrate both oscs at once
       b = FASTCLK/(s?rateV:rateP); // actual rather than chosen clock
-      printf("%6d  %6.0lf  %5d  %6.0lf  %.0lf  ", b, freq[s], trans_count[s], b-freq[s], b+freq[s]);
+      printf("%6d  %6.0lf  %6.0lf  %.0lf  ", b, freq[s], b-freq[s], b+freq[s]);
       if (freq[s] >= IF_MIN && freq[s] < IF_MAX) { // a valid reading
 	if (low[s] == 0) { // first one, clock is below osc freq
 	  low[s] = freq[s];
@@ -171,27 +167,7 @@ void calibrate(int guess0, int guess1) {  // try to find osc freq
     printf("\n");
   }
   for (s=0;s<2;++s) {
-    if (low[s] == 0 || high[s] == 0) {
-      fprintf(stderr, "Osc %d CALIBRATION FAILED — running wide sweep to find actual frequency...\n", s);
-      // Sweep SPI clock from 200 kHz to 1 MHz in 25 kHz steps to find the oscillator
-      int sweep_rate, best_rate = 0; double best_beat = 1e9;
-      for (sweep_rate = FASTCLK/1000000; sweep_rate <= FASTCLK/200000; sweep_rate += 8) {
-        if (s == 0) rateP = sweep_rate; else rateV = sweep_rate;
-        pitch_if = vol_if = 50000;
-        tv.tv_nsec = 0.05e9;
-        nanosleep(&tv, NULL);
-        double measured = s ? vol_if : pitch_if;
-        int clk = FASTCLK / sweep_rate;
-        fprintf(stderr, "  Osc %d: SPI clk %d Hz  beat %.0lf Hz  trans %d\n",
-                s, clk, measured, trans_count[s]);
-        if (measured < best_beat) { best_beat = measured; best_rate = sweep_rate; }
-      }
-      fprintf(stderr, "Osc %d: lowest beat %.0lf Hz at SPI clk %d Hz — oscillator ~%d Hz\n",
-              s, best_beat, FASTCLK/best_rate, FASTCLK/best_rate);
-      if (s == 0) rateP = best_rate; else rateV = best_rate;
-      continue;
-    }
-    i = (top[s]*low[s] + base[s]*high[s])/(low[s]+high[s]) + IF_MIN;
+    i = (top[s]*low[s] + base[s]*high[s])/(low[s]+high[s]) + IF_MIN; 
     // set clk to osc freq plus quiescent IF
     b = FASTCLK/i;
     if (s) rateV = b; else rateP = b;
@@ -213,7 +189,7 @@ void setupSensing () {
   if (signal(SIGTERM, sig_handler) == SIG_ERR)
     fprintf(stderr, "\ncan't catch SIGTERM\n");
 
-  pitch_if = 390000; // pitch osc running ~390kHz (100pF cap likely placed as 470pF)
+  pitch_if = 570000; // guesses around which to search
   vol_if = 520000;
   rateP = FASTCLK / pitch_if;   // ← ADD THIS
   rateV = FASTCLK / vol_if;     // ← ADD THIS
