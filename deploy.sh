@@ -14,6 +14,6 @@ fi
 git push origin master
 
 # Pull, build, and restart service on Pi
-ssh "$PI" "cd $REMOTE_DIR && git checkout master && git pull && make ultra && sudo systemctl restart mts"
+ssh "$PI" "cd $REMOTE_DIR && git checkout master && git pull && rm -f *.o umts && make ultra && sudo systemctl restart mts"
 
 echo "Deployed."
