@@ -81,6 +81,7 @@ void* readOscs (void* dump) {
     }
 
 // get data from my wiringpi -- side now selects module not chip
+   if (rate <= 0) rate = 350;  // fallback if calibration hasn't run yet
    chnl = wiringPiSPISetup(side, FASTCLK/rate);
    res = wiringPiSPIDataRW(side, bufr, SPI_BUF);
    close(chnl);
@@ -184,6 +185,8 @@ void setupSensing () {
 
   pitch_if = 570000; // guesses around which to search
   vol_if = 520000;
+  rateP = FASTCLK / (int)pitch_if;  // must init before threads start (rate=0 → EINVAL)
+  rateV = FASTCLK / (int)vol_if;
   pthread_create(&threadId, NULL, readOscs, (void*)0);
   pthread_create(&threadId, NULL, readOscs, (void*)1);
 
