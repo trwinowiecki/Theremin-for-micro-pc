@@ -173,12 +173,12 @@ void calibrate(int guess0, int guess1) {  // try to find osc freq
   for (s=0;s<2;++s) {
     if (low[s] == 0 || high[s] == 0) {
       fprintf(stderr, "Osc %d CALIBRATION FAILED — running wide sweep to find actual frequency...\n", s);
-      // Sweep SPI clock from 300 kHz to 1 MHz to find where the oscillator actually is
+      // Sweep SPI clock from 200 kHz to 1 MHz in 25 kHz steps to find the oscillator
       int sweep_rate, best_rate = 0; double best_beat = 1e9;
-      for (sweep_rate = FASTCLK/1000000; sweep_rate <= FASTCLK/300000; sweep_rate++) {
+      for (sweep_rate = FASTCLK/1000000; sweep_rate <= FASTCLK/200000; sweep_rate += 8) {
         if (s == 0) rateP = sweep_rate; else rateV = sweep_rate;
         pitch_if = vol_if = 50000;
-        tv.tv_nsec = 0.1e9;
+        tv.tv_nsec = 0.05e9;
         nanosleep(&tv, NULL);
         double measured = s ? vol_if : pitch_if;
         int clk = FASTCLK / sweep_rate;
@@ -213,7 +213,7 @@ void setupSensing () {
   if (signal(SIGTERM, sig_handler) == SIG_ERR)
     fprintf(stderr, "\ncan't catch SIGTERM\n");
 
-  pitch_if = 570000; // guesses around which to search
+  pitch_if = 390000; // pitch osc running ~390kHz (100pF cap likely placed as 470pF)
   vol_if = 520000;
   rateP = FASTCLK / pitch_if;   // ← ADD THIS
   rateV = FASTCLK / vol_if;     // ← ADD THIS
